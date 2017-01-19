@@ -1,21 +1,54 @@
 package com.github.gregwhitaker.cache;
 
+import java.util.AbstractMap;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 public final class UnboundedLRUCache<K, V> {
 
-    private final HashMap<K, Node<K, V>> cache;
+    private final HashMap<K, Node<K, V>> cache = new HashMap<>();
     private Node<K, V> leastRecentlyUsed;
     private Node<K, V> mostRecentlyUsed;
     private AtomicLong currentSize = new AtomicLong(0);
+    private Consumer<EvictionEvent> evictionListener;
+    private Consumer<PutEvent> putListener;
 
+    /**
+     * Creates a new unbounded least-recently-used cache.
+     */
     public UnboundedLRUCache() {
-        cache = new HashMap<>();
         leastRecentlyUsed = new Node<>(null, null, null, null);
         mostRecentlyUsed = leastRecentlyUsed;
     }
 
+    /**
+     * Creates a new unbounded least-recently-used cache with an eviction event listener.
+     *
+     * @param evictionListener function that is invoked when an item is evicted from the cache
+     */
+    public UnboundedLRUCache(Consumer<EvictionEvent> evictionListener) {
+        this.evictionListener = evictionListener;
+    }
+
+    /**
+     * Creates a new unbounded least-recently-used cache with eviction and put event listeners.
+     *
+     * @param evictionListener function that is invoked when an item is evicted from the cache
+     * @param putListener function that is invoked when an item is added to or updated within the cache
+     */
+    public UnboundedLRUCache(Consumer<EvictionEvent> evictionListener, Consumer<PutEvent> putListener) {
+        this.evictionListener = evictionListener;
+        this.putListener = putListener;
+    }
+
+    /**
+     * Retrieve a value from the cache.
+     *
+     * @param key cache key
+     * @return the value for the key if it exists; otherwise <code>null</code>
+     */
     public synchronized V get(K key) {
         Node<K, V> node = cache.get(key);
 
@@ -49,12 +82,19 @@ public final class UnboundedLRUCache<K, V> {
         return node.value;
     }
 
+    /**
+     * Adds a new value to the cache or updates an existing value.
+     *
+     * @param key cache key
+     * @param value the value to add or update
+     */
     public synchronized void put(K key, V value) {
         if (cache.containsKey(key)) {
             Node<K, V> node = cache.get(key);
+            V previousValue = node.value;
+            node.value = value;
 
             if (node == mostRecentlyUsed) {
-                node.value = value;
                 cache.put(key, node);
             } else {
                 Node<K, V> previousNode = node.previous;
@@ -64,7 +104,7 @@ public final class UnboundedLRUCache<K, V> {
                     // Left-most scenario
                     nextNode.previous = null;
                     leastRecentlyUsed = nextNode;
-                } else if (node != mostRecentlyUsed) {
+                } else {
                     // Middle scenario
                     previousNode.next = nextNode;
                     nextNode.previous = previousNode;
@@ -78,21 +118,38 @@ public final class UnboundedLRUCache<K, V> {
 
                 cache.put(key, node);
             }
+
+            if (putListener != null) {
+                putListener.accept(new PutEvent(key, value, previousValue));
+            }
         } else {
             Node<K, V> newNode = new Node<>(mostRecentlyUsed, null, key, value);
-            mostRecentlyUsed.next = newNode;
-            cache.put(key, newNode);
-            mostRecentlyUsed = newNode;
 
             if (currentSize.get() == 0) {
+                mostRecentlyUsed = newNode;
                 leastRecentlyUsed = newNode;
+            } else {
+                mostRecentlyUsed.next = newNode;
+                mostRecentlyUsed = newNode;
+                mostRecentlyUsed.next = null;
+            }
+
+            cache.put(key, newNode);
+
+            if (putListener != null) {
+                putListener.accept(new PutEvent(key, value));
             }
 
             currentSize.addAndGet(1);
         }
     }
 
-    public synchronized EvictedEntry<K, V> evictLeastRecentlyUsed() {
+    /**
+     * Evicts the least recently used item in the cache.
+     *
+     * @return the evicted item
+     */
+    public synchronized Map.Entry<K, V> evictLeastRecentlyUsed() {
         if (leastRecentlyUsed != null) {
             Node<K, V> evictedNode = cache.remove(leastRecentlyUsed.key);
             currentSize.decrementAndGet();
@@ -101,7 +158,11 @@ public final class UnboundedLRUCache<K, V> {
             nextNode.previous = null;
             leastRecentlyUsed = nextNode;
 
-            return new EvictedEntry<>(evictedNode.key, evictedNode.value);
+            if (evictionListener != null) {
+                evictionListener.accept(new EvictionEvent(evictedNode.key, evictedNode.value));
+            }
+
+            return new AbstractMap.SimpleImmutableEntry<>(evictedNode.key, evictedNode.value);
         }
 
         return null;
@@ -118,6 +179,87 @@ public final class UnboundedLRUCache<K, V> {
             this.next = next;
             this.key = key;
             this.value = value;
+        }
+    }
+
+    public class EvictionEvent {
+        private final K key;
+        private final V value;
+        private final long timestamp;
+
+        public EvictionEvent(final K key, final V value) {
+            this.key = key;
+            this.value = value;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public K getKey() {
+            return key;
+        }
+
+        public V getValue() {
+            return value;
+        }
+
+        public long getTimestamp() {
+            return timestamp;
+        }
+
+        @Override
+        public String toString() {
+            return "EvictionEvent{" +
+                    "key=" + key +
+                    ", value=" + value +
+                    ", timestamp=" + timestamp +
+                    '}';
+        }
+    }
+
+    public class PutEvent {
+        private final K key;
+        private final V value;
+        private final V previousValue;
+        private final long timestamp;
+
+        public PutEvent(final K key, final V value) {
+            this(key, value, null);
+        }
+
+        public PutEvent(final K key, final V value, final V previousValue) {
+            this.key = key;
+            this.value = value;
+            this.previousValue = previousValue;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public K getKey() {
+            return key;
+        }
+
+        public V getValue() {
+            return value;
+        }
+
+        public V getPreviousValue() {
+            return previousValue;
+        }
+
+        public long getTimestamp() {
+            return timestamp;
+        }
+
+        public boolean isUpdate() {
+            return (value != null && previousValue != null);
+        }
+
+        @Override
+        public String toString() {
+            return "PutEvent{" +
+                    "key=" + key +
+                    ", value=" + value +
+                    ", previousValue=" + previousValue +
+                    ", timestamp=" + timestamp +
+                    '}';
         }
     }
 
