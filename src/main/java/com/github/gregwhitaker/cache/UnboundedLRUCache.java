@@ -182,6 +182,9 @@ public final class UnboundedLRUCache<K, V> {
         }
     }
 
+    /**
+     * Event raised when an item is evicted from the cache.
+     */
     public class EvictionEvent {
         private final K key;
         private final V value;
@@ -215,6 +218,9 @@ public final class UnboundedLRUCache<K, V> {
         }
     }
 
+    /**
+     * Event raised when an item is added to the cache.
+     */
     public class PutEvent {
         private final K key;
         private final V value;
