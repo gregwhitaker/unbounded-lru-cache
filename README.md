@@ -1,7 +1,7 @@
 unbounded-lru-cache
 ===
 
-Example of an unbounded least-recently-used cache implementation.
+Example of an unbounded least-recently-used cache.
 
 ##Bugs and Feedback
 
