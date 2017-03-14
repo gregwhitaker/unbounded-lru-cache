@@ -1,14 +1,13 @@
-unbounded-lru-cache
-===
+# unbounded-lru-cache
 [![Build Status](https://travis-ci.org/gregwhitaker/unbounded-lru-cache.svg?branch=master)](https://travis-ci.org/gregwhitaker/unbounded-lru-cache)
 
 Example of an unbounded least-recently-used cache.
 
-##Bugs and Feedback
+## Bugs and Feedback
 
 For bugs, questions and discussions please use the [Github Issues](https://github.com/gregwhitaker/unbounded-lru-cache/issues).
 
-##License
+## License
 Copyright 2017 Greg Whitaker
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
