@@ -4,7 +4,6 @@
 Example of an unbounded least-recently-used cache.
 
 ## Bugs and Feedback
-
 For bugs, questions and discussions please use the [Github Issues](https://github.com/gregwhitaker/unbounded-lru-cache/issues).
 
 ## License
